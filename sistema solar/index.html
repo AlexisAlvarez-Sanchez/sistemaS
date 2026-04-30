@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Sistema Solar 3D</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.3/p5.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; overflow: hidden; }
+  </style>
+</head>
+<body>
+<script>
+let rotX=0, rotY=0, escala=1, posX=0, posY=0, posZ=0;
+let pausado=false, modoColor=0;
+let tAcum=0, tPrev=0;
+let planetas=[], lunas=[], estrellas=[], asteroides=[];
+
+let cohete = { orbitaR: 60, ang: 0, vel: 0.04 };
+
+function setup() {
+  createCanvas(windowWidth, windowHeight, WEBGL);
+  colorMode(RGB, 255);
+  frameRate(60);
+
+  planetas = [
+    { nombre:"Mercurio", orbitaR:80,  tam:10, col:[169,169,169], vel:0.047, ang:0   },
+    { nombre:"Venus",    orbitaR:130, tam:18, col:[255,198,120], vel:0.035, ang:1.5 },
+    { nombre:"Tierra",   orbitaR:190, tam:22, col:[ 70,130,200], vel:0.029, ang:3.2 },
+    { nombre:"Marte",    orbitaR:255, tam:15, col:[205, 80, 50], vel:0.024, ang:0.8 },
+    { nombre:"Jupiter",  orbitaR:340, tam:50, col:[210,160, 90], vel:0.013, ang:2.1 },
+    { nombre:"Saturno",  orbitaR:430, tam:40, col:[230,200,130], vel:0.009, ang:4.5 },
+  ];
+
+  lunas.push({ planeta:2, orbitaR:35, tam:7, col:[200,200,210], vel:0.08, ang:0 });
+  for (let i=0; i<4; i++) {
+    lunas.push({ planeta:4, orbitaR:65+i*18, tam:5+i*2,
+      col:[180+i*20, 160+i*15, 100+i*30], vel:0.06-i*0.01, ang:i*1.57 });
+  }
+
+  for (let i=0; i<300; i++) {
+    let th=random(TWO_PI), ph=random(PI), r=random(700,1000);
+    estrellas.push({ x:r*sin(ph)*cos(th), y:r*sin(ph)*sin(th), z:r*cos(ph), tam:random(1,3) });
+  }
+
+  for (let i=0; i<120; i++) {
+    asteroides.push({
+      ang: random(TWO_PI),
+      r:   random(275, 315),
+      h:   random(-15, 15),
+      vel: random(0.003, 0.008),
+      tam: random(1.5, 4),
+      // ── rotación propia ──────────────────────────
+      spinX: 0, spinY: 0, spinZ: 0,          // ángulos acumulados
+      svelX: random(-0.04, 0.04),             // velocidad de giro X
+      svelY: random(-0.06, 0.06),             // velocidad de giro Y
+      svelZ: random(-0.03, 0.03),             // velocidad de giro Z
+    });
+  }
+
+  tPrev = millis();
+}
+
+function draw() {
+  background(0, 0, 8);
+
+  let ahora = millis();
+  if (!pausado) tAcum += ahora - tPrev;
+  tPrev = ahora;
+  let t = tAcum * 0.001;
+
+  orbitControl(2, 2, 0.05);
+  translate(posX, posY, posZ);
+  rotateX(rotX); rotateY(rotY);
+  scale(escala);
+
+  // Estrellas
+  noStroke();
+  for (let s of estrellas) {
+    push();
+    translate(s.x, s.y, s.z);
+    let b = map(sin(t*2 + s.x*0.01), -1, 1, 140, 255);
+    fill(b, b, b);
+    sphere(s.tam, 3, 3);
+    pop();
+  }
+
+  // Sol
+  push();
+  noStroke();
+  fill(255, 200, 0, 35);
+  sphere(map(sin(t*2),-1,1,55,68), 10, 10);
+  fill(255, 220, 50);
+  sphere(45, 24, 24);
+  rotateY(t*0.5);
+  fill(255,150,0,160);
+  push(); translate(42,5,5);    sphere(5,8,8); pop();
+  push(); translate(-38,-8,15); sphere(7,8,8); pop();
+  pop();
+
+  // Órbitas
+  push(); noFill(); strokeWeight(0.4);
+  for (let p of planetas) { stroke(255,255,255,25); dibujarCirculo(p.orbitaR); }
+  stroke(180,150,100,15); dibujarCirculo(295);
+  stroke(100,200,255,30); dibujarCirculo(cohete.orbitaR);
+  pop();
+
+  // ── Asteroides con giro propio ────────────────────────────
+  noStroke();
+  for (let a of asteroides) {
+    if (!pausado) {
+      a.ang  += a.vel * 0.016;
+      a.spinX += a.svelX;   // acumular rotación
+      a.spinY += a.svelY;
+      a.spinZ += a.svelZ;
+    }
+    push();
+    translate(a.r*cos(a.ang), a.h, a.r*sin(a.ang));
+    rotateX(a.spinX);       // aplicar giro propio
+    rotateY(a.spinY);
+    rotateZ(a.spinZ);
+    let g = random(110, 170);
+    fill(g, g-10, g-20);
+    box(a.tam);
+    pop();
+  }
+
+  // Planetas y lunas
+  for (let i=0; i<planetas.length; i++) {
+    let p = planetas[i];
+    if (!pausado) p.ang += p.vel*0.016;
+    let px = p.orbitaR*cos(p.ang);
+    let pz = p.orbitaR*sin(p.ang);
+
+    push();
+    translate(px, 0, pz);
+    rotateY(t*p.vel*10);
+
+    if (modoColor===1) {
+      noFill(); stroke(p.col[0],p.col[1],p.col[2]); strokeWeight(0.8);
+    } else if (modoColor===2) {
+      noStroke();
+      let k = map(sin(t*3+i),-1,1,0.5,1.5);
+      fill(p.col[0]*k, p.col[1]*k, p.col[2]*k);
+    } else {
+      noStroke();
+      let f = map(cos(p.ang),-1,1,0.4,1.0);
+      fill(p.col[0]*f, p.col[1]*f, p.col[2]*f);
+    }
+
+    sphere(p.tam, 20, 20);
+
+    if (i===5) {
+      push(); rotateX(PI/5); noFill(); strokeWeight(2);
+      for (let j=0; j<6; j++) {
+        stroke(210,185,130, map(j,0,5,160,40));
+        let rA = p.tam+12+j*5;
+        beginShape();
+        for (let a=0; a<=TWO_PI; a+=TWO_PI/80) vertex(rA*cos(a),0,rA*sin(a));
+        endShape(CLOSE);
+      }
+      pop();
+    }
+    pop();
+
+    for (let luna of lunas.filter(l=>l.planeta===i)) {
+      if (!pausado) luna.ang += luna.vel*0.016;
+      let lx = px + luna.orbitaR*cos(luna.ang);
+      let lz = pz + luna.orbitaR*sin(luna.ang);
+      let ly = luna.orbitaR*0.2*sin(luna.ang*2);
+      push();
+      translate(lx, ly, lz);
+      noStroke(); fill(luna.col[0], luna.col[1], luna.col[2]);
+      sphere(luna.tam, 10, 10);
+      pop();
+    }
+  }
+
+  // Cohete orbital
+  if (!pausado) cohete.ang += cohete.vel * 0.016 * 60;
+  let cx = cohete.orbitaR * cos(cohete.ang);
+  let cz = cohete.orbitaR * sin(cohete.ang);
+  push();
+  translate(cx, 0, cz);
+  rotateY(-cohete.ang - HALF_PI);
+  dibujarCohete(t);
+  pop();
+
+  // HUD
+  push();
+  translate(-width/2, -height/2, 0);
+  noStroke();
+  fill(0,0,0,110);
+  rect(12, 12, 200, 86, 5);
+  let modos = ["Normal","Wireframe","Neon"];
+  fill(80,180,255); textSize(11); textAlign(LEFT,TOP);
+  text("Sistema Solar 3D", 22, 20);
+  fill(170,195,225); textSize(10);
+  text("Modo: "+modos[modoColor]+"  "+(pausado?"|| Pausado":"► Play"), 22, 36);
+  text("W/S/A/D · Q/E · Flechas", 22, 50);
+  text("ESPACIO: pausa  C: color  R: reset", 22, 64);
+  text("Mouse: rotar / scroll: zoom", 22, 78);
+  pop();
+}
+
+function dibujarCohete(t) {
+  let s = 0.35;
+  push();
+  scale(s, s, s);
+  let flame = map(sin(t * 12), -1, 1, 6, 11);
+  noStroke();
+  fill(255, 160, 30, 200);
+  push(); translate(0, 18, 0); sphere(flame * 0.55, 6, 6); pop();
+  fill(255, 230, 80, 160);
+  push(); translate(0, 22, 0); sphere(flame * 0.3, 5, 5); pop();
+  fill(220, 230, 255);
+  push(); scale(1, 2.2, 1); sphere(7, 10, 10); pop();
+  fill(220, 60, 60);
+  push(); translate(0, -17, 0); rotateX(PI); cone(7, 14, 8); pop();
+  fill(100, 200, 255, 220);
+  push(); translate(0, -4, 7); sphere(3.5, 8, 8); pop();
+  fill(180, 60, 60);
+  push(); translate(-9, 10, 0); rotateZ(PI/6);  scale(1,1.6,0.3); box(5,8,4); pop();
+  push(); translate( 9, 10, 0); rotateZ(-PI/6); scale(1,1.6,0.3); box(5,8,4); pop();
+  pop();
+}
+
+function dibujarCirculo(r) {
+  beginShape();
+  for (let a=0; a<=TWO_PI; a+=0.05) vertex(r*cos(a), 0, r*sin(a));
+  endShape(CLOSE);
+}
+
+function keyPressed() {
+  if (key==='w'||key==='W') posZ+=25;
+  if (key==='s'||key==='S') posZ-=25;
+  if (key==='a'||key==='A') posX+=25;
+  if (key==='d'||key==='D') posX-=25;
+  if (key==='q'||key==='Q') escala=min(escala+0.1,3);
+  if (key==='e'||key==='E') escala=max(escala-0.1,0.2);
+  if (keyCode===UP_ARROW)    rotX-=0.1;
+  if (keyCode===DOWN_ARROW)  rotX+=0.1;
+  if (keyCode===LEFT_ARROW)  rotY-=0.1;
+  if (keyCode===RIGHT_ARROW) rotY+=0.1;
+  if (key===' ') pausado=!pausado;
+  if (key==='c'||key==='C') modoColor=(modoColor+1)%3;
+  if (key==='r'||key==='R') { rotX=0;rotY=0;escala=1;posX=0;posY=0;posZ=0; }
+}
+
+function windowResized() { resizeCanvas(windowWidth, windowHeight); }
+</script>
+</body>
+</html>
